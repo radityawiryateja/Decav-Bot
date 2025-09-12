@@ -1,23 +1,21 @@
-import os
 from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup
 import json
 import logging
 import re
+import markdown
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from supabase import create_client
-from dotenv import load_dotenv
 from telegram.ext import ContextTypes
 
 
 # Token dan Channel
-load_dotenv()  # Load file .env
-
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID"))
-LOG_GROUP_ID = int(os.getenv("LOG_GROUP_ID"))
-CHANNEL_ID = os.getenv("CHANNEL_ID")
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+BOT_TOKEN = '7932656511:AAGqJWjaUtUqms3f4pN2z-qJhbAH0Vsq6QQ'
+CHANNEL_ID = '@siublag'  # Ganti dengan username channel kamu
+GROUP_ID_DISKUSI = -1002890360563  # <- Ganti dengan ID grup diskusi kamu
+ADMIN_GROUP_ID = -1003093290169  # Ganti dengan ID grup admin kamu
+LOG_GROUP_ID = -1003093290169  # Ganti dengan ID grup log kamu
+SUPABASE_URL = 'https://kddjwsnndbliljnxixuv.supabase.co'
+SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkZGp3c25uZGJsaWxqbnhpeHV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1OTI2MzIsImV4cCI6MjA3MzE2ODYzMn0.Byv8o2VbTnoq4nQjAHs_ptkK8BXy1W3kkeNFkwCXYYA'
 
 # Inisialisasi logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -28,6 +26,7 @@ bot_active = True
 
 # Inisialisasi Supabase
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 
 def load_required_channels():
     response = supabase.table('required_channels').select("channel_username").execute()
@@ -53,6 +52,57 @@ async def check_subscription(user_id, context: CallbackContext):
             return False
     return True
 
+async def get_active_hashtags():
+    response = supabase.table("triggered_hashtags").select("hashtag").eq("active", True).execute()
+    if response.data:
+        return [row["hashtag"] for row in response.data]
+    return []
+
+async def add_hashtag(update: Update, context: CallbackContext):
+    if update.effective_chat.id != ADMIN_GROUP_ID:
+        return
+
+    if not context.args:
+        await update.message.reply_text("Gunakan format: /addhashtag <hashtag>")
+        return
+
+    hashtag = context.args[0].strip()
+    supabase.table("triggered_hashtags").upsert({"hashtag": hashtag}).execute()
+    await update.message.reply_text(f"✅ Hashtag `{hashtag}` berhasil ditambahkan!", parse_mode="Markdown")
+
+async def remove_hashtag(update: Update, context: CallbackContext):
+    if update.effective_chat.id != ADMIN_GROUP_ID:
+        return
+
+    if not context.args:
+        await update.message.reply_text("Gunakan format: /removehashtag <hashtag>")
+        return
+
+    hashtag = context.args[0].strip()
+    supabase.table("triggered_hashtags").delete().eq("hashtag", hashtag).execute()
+    await update.message.reply_text(f"❌ Hashtag `{hashtag}` berhasil dihapus!", parse_mode="Markdown")
+
+async def enable_hashtag(update: Update, context: CallbackContext):
+    if update.effective_chat.id != ADMIN_GROUP_ID:
+        return
+    if not context.args:
+        await update.message.reply_text("Gunakan format: /enablehashtag <hashtag>")
+        return
+    hashtag = context.args[0].strip()
+    supabase.table("triggered_hashtags").update({"active": True}).eq("hashtag", hashtag).execute()
+    await update.message.reply_text(f"✅ Hashtag `{hashtag}` diaktifkan!", parse_mode="Markdown")
+
+async def disable_hashtag(update: Update, context: CallbackContext):
+    if update.effective_chat.id != ADMIN_GROUP_ID:
+        return
+    if not context.args:
+        await update.message.reply_text("Gunakan format: /disablehashtag <hashtag>")
+        return
+    hashtag = context.args[0].strip()
+    supabase.table("triggered_hashtags").update({"active": False}).eq("hashtag", hashtag).execute()
+    await update.message.reply_text(f"⚠️ Hashtag `{hashtag}` dinonaktifkan!", parse_mode="Markdown")
+
+
 async def set_required_channels(update: Update, context: CallbackContext):
     if update.effective_chat.id != ADMIN_GROUP_ID:
         return
@@ -71,9 +121,13 @@ async def save_user(user_id, username):
         "user_id": user_id,
         "username": username
     }
-    # Simpan ke Supabase
-    response = supabase.table("users").upsert([data]).execute()
+    # Supaya kalau sudah ada tidak error, tapi update kolom username
+    response = supabase.table("users").upsert(
+        data,
+        on_conflict=["user_id"]
+    ).execute()
     print("User saved:", response)
+
 
 async def start(update: Update, context: CallbackContext):
     if update.effective_chat.type != "private":
@@ -84,11 +138,18 @@ async def start(update: Update, context: CallbackContext):
     # Simpan user ke database
     await save_user(user_id, username)
     if await check_subscription(user_id, context):
-        await update.message.reply_text("Halo! Kamu sudah subscribe channel kami. Silakan kirim pesan!")
+        await update.message.reply_text(
+            "Halo, selamat datang di *BasePF*! ☕️\n\n"
+            "𔐼 *Base PF:* [@basepf](https://t.me/basepf)\n"
+            "𔐼 *LPM PF:* [@lapakproofneeds](https://t.me/lapakproofneeds)\n"
+            "𔐼 *Rules:* [@rulespf](https://t.me/rulespf)\n\n"
+            "Ketuk /menu untuk menampilkan navigasi 🐿",
+            parse_mode="Markdown"
+        )
     else:
         keyboard = [[InlineKeyboardButton("Join Channels", url=f"https://t.me/{channel[1:]}")] for channel in required_channels]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("Kamu harus bergabung dengan channel berikut terlebih dahulu:", reply_markup=reply_markup)
+        await update.message.reply_text("Sebelum lanjut, silakan join channel berikut dulu ya!", reply_markup=reply_markup)
 
 
 async def handle_pesan(update: Update, context: CallbackContext):
@@ -110,12 +171,28 @@ async def handle_pesan(update: Update, context: CallbackContext):
     if not await check_subscription(user_id, context):
         keyboard = [[InlineKeyboardButton("Join Channel", url=f"https://t.me/{channel[1:]}")] for channel in required_channels]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("Kamu belum subscribe channel kami. Silakan subscribe di sini.", reply_markup=reply_markup)
+        await update.message.reply_text("Sebelum lanjut, silakan join channel berikut dulu ya!", reply_markup=reply_markup)
         return
 
-    # Cek apakah pesan mengandung #hunt atau 🐿 di teks atau caption media
+    # Ambil semua hashtag aktif dari database
+    active_hashtags = await get_active_hashtags()  # Fungsi yang sudah kita buat sebelumnya
+
+    # Ambil teks pesan atau caption
     text_content = (update.message.text or update.message.caption or "").strip().lower()
-    is_direct_forward = "#pf" in text_content or "🐿" in text_content
+
+    # Cek apakah pesan mengandung salah satu hashtag aktif
+    is_direct_forward = any(ht.lower() in text_content for ht in active_hashtags)
+
+    # Tambahkan pengecekan pesan kosong
+    # Misal user cuma ketik hashtag tapi tidak ada teks tambahan atau media
+    text_without_hashtag = text_content
+    for ht in active_hashtags:
+        text_without_hashtag = re.sub(re.escape(ht), "", text_without_hashtag, flags=re.IGNORECASE)
+    text_without_hashtag = text_without_hashtag.strip()
+
+    if is_direct_forward and not text_without_hashtag and not (update.message.photo or update.message.video or update.message.document or update.message.audio or update.message.voice or update.message.sticker):
+        await update.message.reply_text("⚠️ Harap isi pesan terlebih dahulu sebelum mengirim hashtag!")
+        return
 
     # Tentukan target kiriman
     target_chat_id = CHANNEL_ID if is_direct_forward else ADMIN_GROUP_ID
@@ -165,9 +242,23 @@ async def handle_pesan(update: Update, context: CallbackContext):
     if is_direct_forward and message_sent:
         keyboard = [[InlineKeyboardButton("Lihat Pesan Kamu", url=f"https://t.me/{CHANNEL_ID[1:]}/{message_sent.message_id}")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("Pesan kamu telah dikirim ke channel kami. Kamu dapat melihatnya melalui tombol berikut.", reply_markup=reply_markup)
+        await update.message.reply_text(
+            "Pesan kamu telah dikirim ke channel! 🪶\n\n"
+            "𔐼 *Base PF:* [@basepf](https://t.me/basepf)\n"
+            "𔐼 *LPM PF:* [@lapakproofneeds](https://t.me/lapakproofneeds)\n"
+            "𔐼 *Rules:* [@rulespf](https://t.me/rulespf)\n\n"
+            "Jangan lupa kepoin channel diatas ya proofies!",
+            parse_mode="Markdown",
+            reply_markup=reply_markup
+        )
     else:
         await update.message.reply_text("Pesan kamu telah dikirim, mohon tunggu beberapa saat.")
+
+    if is_direct_forward and message_sent:
+        supabase.table("menfess_map").insert({
+            "post_id": message_sent.message_id,   # id pesan di channel
+            "sender_user_id": user_id             # langsung ambil dari update.effective_user.id
+        }).execute()
 
     # Log masuk ke grup
     if is_direct_forward and message_sent:
@@ -198,10 +289,31 @@ async def handle_admin_reply(update: Update, context: CallbackContext):
     
     user_id = int(match.group(1))
     reply_text = update.message.text or update.message.caption
-    
-    logger.info(f"Original message: {original_message.text or original_message.caption}")
-    logger.info(f"Extracted user ID: {user_id}")
 
+    # ✅ Kalau balasan admin itu command
+    if reply_text and reply_text.startswith("/"):
+        command_name = reply_text.split()[0]
+
+        response = supabase.table("commands").select("content").eq("name", command_name).execute()
+        if response.data:
+            content = response.data[0]["content"]
+            try:
+                await context.bot.send_message(chat_id=user_id, text=content, parse_mode="Markdown")
+                # kasih notif singkat di grup (opsional)
+                notif = await update.message.reply_text(f"✅ Command `{command_name}` dikirim ke user {user_id}", parse_mode="Markdown")
+                # auto hapus notif biar grup gak kotor
+                import asyncio
+                await asyncio.sleep(5)
+                try:
+                    await notif.delete()
+                except:
+                    pass
+            except Exception as e:
+                logger.error(f"Gagal kirim command ke user: {e}")
+                await update.message.reply_text("❌ Gagal mengirim command ke user.")
+        return  # ⛔ stop di sini, jangan lanjut ke flow balasan biasa!
+
+    # ✅ Kalau bukan command → lanjut balasan biasa
     caption = f"📬 Balasan dari admin:\n\n{reply_text}" if reply_text else "📬 Balasan dari admin."
 
     try:
@@ -223,10 +335,90 @@ async def handle_admin_reply(update: Update, context: CallbackContext):
             await update.message.reply_text("Jenis balasan tidak didukung.")
             return
 
-        await update.message.reply_text("Balasan telah dikirim.")
+        notif = await update.message.reply_text("✅ Balasan telah dikirim ke user.")
+        import asyncio
+        await asyncio.sleep(5)
+        try:
+            await notif.delete()
+        except:
+            pass
+            
     except Exception as e:
         logger.error(f"Error sending message: {e}")
-        await update.message.reply_text("Gagal mengirim balasan. Pastikan pengguna masih dapat menerima pesan.")
+        await update.message.reply_text("❌ Gagal mengirim balasan. Pastikan pengguna masih dapat menerima pesan.")
+
+async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.channel_post
+    if not msg:
+        return
+
+    post_id = msg.message_id
+    logging.info(f"📩 Channel post masuk: post_id={post_id}")
+
+    # Simpan sementara ke cache kalau perlu
+    # (opsional, karena mapping fix-nya diambil dari auto-forward di grup)
+    context.bot_data.setdefault("channel_posts", set()).add(post_id)
+
+
+async def handle_discussion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if not msg:
+        return
+
+    # ✅ Kasus 1: auto-forward dari channel ke grup diskusi
+    if msg.is_automatic_forward and msg.forward_origin and msg.forward_origin.type == "channel":
+        if str(msg.forward_origin.chat.id) == str(CHANNEL_ID) or str(msg.forward_origin.chat.username) == CHANNEL_ID.lstrip("@"):
+            post_id = msg.forward_origin.message_id
+            discussion_message_id = msg.message_id
+
+            logging.info(f"🔗 Mapping baru: {post_id} ↔ {discussion_message_id}")
+
+            supabase.table("menfess_map").update({
+                "discussion_message_id": discussion_message_id
+            }).eq("post_id", post_id).execute()
+
+            return  # stop di sini biar ga lanjut ke reply handler
+
+    # ✅ Kasus 2: user reply di grup diskusi
+    if msg.reply_to_message:
+        replied_msg_id = msg.reply_to_message.message_id
+        logging.info(f"🧵 Balasan diskusi terdeteksi: {replied_msg_id}")
+
+        # Ambil sender_user_id dan post_id
+        response = supabase.table("menfess_map").select("sender_user_id, post_id").eq("discussion_message_id", replied_msg_id).execute()
+        if not response.data:
+            logging.info("❌ Tidak ada mapping untuk discussion_message_id ini.")
+            return
+
+        sender_user_id = response.data[0]["sender_user_id"]
+        post_id = response.data[0]["post_id"]
+        logging.info(f"📩 Kirim balasan ke user_id: {sender_user_id}")
+
+        # Link komentar ke channel post
+        channel_username = CHANNEL_ID.lstrip("@")
+        comment_link = f"https://t.me/{channel_username}/{post_id}?comment={msg.message_id}"
+
+        keyboard = [[InlineKeyboardButton("💬 Lihat Balasan", url=comment_link)]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        # Ambil display name pengirim balasan
+        user = msg.from_user
+        commenter = f"{user.first_name} (@{user.username})" if user.username else user.first_name
+
+        # Teks notifikasi
+        text_notification = f"📬 {commenter} berkomentar untuk menfess kamu!"
+
+        try:
+            await context.bot.send_message(
+                chat_id=sender_user_id,
+                text=text_notification,
+                reply_markup=reply_markup
+            )
+            logging.info("✅ Balasan berhasil dikirim ke user.")
+        except Exception as e:
+            logger.error(f"❌ Gagal kirim balasan ke user: {e}")
+
+
 
 async def open_bot(update: Update, context: CallbackContext):
     global bot_active
@@ -264,6 +456,30 @@ async def remove_failed_user(user_id):
         logger.info(f"User {user_id} dihapus dari database.")
     except Exception as e:
         logger.error(f"Gagal menghapus user {user_id}: {e}")
+
+async def menu(update: Update, context: CallbackContext):
+    if update.effective_chat.type != "private":
+        return
+
+    menu_text = (
+        "📋 *Daftar Hashtag BasePF*\n\n"
+        "🐿 `#wta` – Untuk bertanya\n"
+        "🐿 `#wtb` – Untuk mencari barang/jasa\n"
+        "🐿 `#hiring` – Untuk informasi hiring admin\n"
+        "🐿 `#mutual` – Untuk ajakan mutualan BA \n"
+        "🐿 `#ptpt` – Untuk mencari partner ptpt\n"
+        "🐿 `#oot` – Bebas (hanya saat sesi oot)\n\n"
+        "⚠️ *Peringatan:*\n"
+        "Gunakan hashtag dengan benar dan bijak. Hindari spam atau keluar dari ranah profneeds/editing."
+    )
+
+    # Inline keyboard menuju rules
+    keyboard = [
+        [InlineKeyboardButton("📜 Baca Rules Lengkap", url="https://t.me/rulespf/8")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(menu_text, parse_mode="Markdown", reply_markup=reply_markup)
 
 
 async def broadcast_forward(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -330,17 +546,95 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(report)
 
+    # Fungsi untuk menambahkan command
+async def add_command(update: Update, context: CallbackContext) -> None:
+    if update.message.reply_to_message:
+        command_name = context.args[0] if context.args else None
+        command_content = update.message.reply_to_message.text
+    else:
+        if len(context.args) < 2:
+            await update.message.reply_text("Gunakan format: /addcommand <nama> <isi>")
+            return
+        command_name, command_content = context.args[0], " ".join(context.args[1:])
+
+    command_name = command_name
+    if not command_name.startswith("/"):
+        command_name = "/" + command_name  # Pastikan selalu pakai "/"
+
+    logging.info(f"Menyimpan command: {command_name}")
+
+    response = supabase.table("commands").upsert({"name": command_name, "content": command_content}).execute()
+    if response.data:
+        await update.message.reply_text(f"Command `{command_name}` berhasil disimpan!", parse_mode='Markdown')
+    else:
+        await update.message.reply_text("Gagal menyimpan command.")
+
+async def get_command(update: Update, context: CallbackContext) -> None:
+    message_text = update.message.text.strip()
+    logging.info(f"Pesan masuk: {message_text}")
+
+    if not message_text.startswith("/"):
+        logging.info("Pesan bukan command, diabaikan.")
+        return  
+
+    command_name = message_text.strip().split()[0]  # Ambil nama command lengkap (termasuk "/")
+    logging.info(f"Mencari command: {command_name}")
+
+
+    response = supabase.table("commands").select("content").eq("name", command_name).execute()
+    logging.info(f"Respon dari database: {response}")
+
+    if response.data:
+        content = response.data[0]["content"]
+        logging.info(f"Menampilkan isi command: {content}")
+        await update.message.reply_text(content, parse_mode='Markdown')
+    else:
+        logging.info("Command tidak ditemukan.")
+        return
+
+
+# Fungsi untuk menghapus command
+async def delete_command(update: Update, context: CallbackContext) -> None:
+    if not context.args:
+        await update.message.reply_text("Gunakan format: /deletecommand <nama>")
+        return
+    
+    command_name = context.args[0]
+
+    # ✅ Pastikan selalu ada "/"
+    if not command_name.startswith("/"):
+        command_name = "/" + command_name
+
+    response = supabase.table("commands").delete().eq("name", command_name).execute()
+    
+    if response.data:
+        await update.message.reply_text(f"Command `{command_name}` berhasil dihapus!", parse_mode='Markdown')
+    else:
+        await update.message.reply_text(f"Command `{command_name}` tidak ditemukan atau gagal dihapus.", parse_mode='Markdown')
+
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
+
     application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('menu', menu))
     application.add_handler(CommandHandler('open', open_bot))
     application.add_handler(CommandHandler('close', close_bot))
     application.add_handler(CommandHandler('grupid', get_group_id))
     application.add_handler(CommandHandler('setrequired', set_required_channels))
+    application.add_handler(CommandHandler("addhashtag", add_hashtag))
+    application.add_handler(CommandHandler("removehashtag", remove_hashtag))
+    application.add_handler(CommandHandler("enablehashtag", enable_hashtag))
+    application.add_handler(CommandHandler("disablehashtag", disable_hashtag))
     application.add_handler(CommandHandler('broadcastfw', broadcast_forward))
     application.add_handler(CommandHandler('broadcast', broadcast))
+    application.add_handler(CommandHandler("addcommand", add_command))
+    application.add_handler(CommandHandler("deletecommand", delete_command))
     application.add_handler(MessageHandler(filters.ALL & filters.ChatType.PRIVATE, handle_pesan))
     application.add_handler(MessageHandler(filters.ALL & filters.Chat(ADMIN_GROUP_ID), handle_admin_reply))
+    application.add_handler(MessageHandler(filters.ChatType.CHANNEL, handle_channel_post))
+    application.add_handler(MessageHandler(filters.ChatType.GROUPS, handle_discussion))
+    application.add_handler(MessageHandler(filters.COMMAND, get_command))
+
 
 
     application.run_polling()
