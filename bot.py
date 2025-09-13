@@ -8,8 +8,8 @@ from supabase import create_client
 
 # Token dan Channel
 BOT_TOKEN = '8288933289:AAHCp1BzSdiJyy8owiaRiYOXYKw7tH87V3k'
-CHANNEL_ID = '@siublag'  # Ganti dengan username channel kamu
-GROUP_ID_DISKUSI = -1002890360563  # <- Ganti dengan ID grup diskusi kamu
+CHANNEL_ID = '@basepf'  # Ganti dengan username channel kamu
+GROUP_ID_DISKUSI = -1002457998417  # <- Ganti dengan ID grup diskusi kamu
 ADMIN_GROUP_ID = -1003093290169  # Ganti dengan ID grup admin kamu
 LOG_GROUP_ID = -4766261341  # Ganti dengan ID grup log kamu
 SUPABASE_URL = 'https://kddjwsnndbliljnxixuv.supabase.co'
@@ -375,35 +375,22 @@ async def handle_discussion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not msg:
         return
 
-    post_id = None
-
     # ✅ Kasus 1: auto-forward dari channel ke grup diskusi
     if msg.is_automatic_forward and msg.forward_origin and msg.forward_origin.type == "channel":
-        origin_id = str(msg.forward_origin.chat.id)
-        origin_username = msg.forward_origin.chat.username.lower() if msg.forward_origin.chat.username else None
-
-        if str(CHANNEL_ID) == origin_id or (origin_username and origin_username == CHANNEL_ID.lstrip("@").lower()):
+        origin_chat = msg.forward_origin.chat
+        if origin_chat.username and ("@" + origin_chat.username.lower() == CHANNEL_ID.lower()):
             post_id = msg.forward_origin.message_id
+            discussion_message_id = msg.message_id
 
-    # ✅ Kasus 1b (fallback): kalau bukan auto-forward tapi ada forward info
-    elif msg.forward_from_chat:
-        origin_id = str(msg.forward_from_chat.id)
-        origin_username = msg.forward_from_chat.username.lower() if msg.forward_from_chat.username else None
+            supabase.table("menfess_map").update({
+                "discussion_message_id": discussion_message_id
+            }).eq("post_id", post_id).execute()
 
-        if str(CHANNEL_ID) == origin_id or (origin_username and origin_username == CHANNEL_ID.lstrip("@").lower()):
-            post_id = msg.forward_from_message_id
-
-    # ✅ Simpan mapping kalau dapat post_id
-    if post_id:
-        discussion_message_id = msg.message_id
-        logging.info(f"🔗 Mapping baru: {post_id} ↔ {discussion_message_id}")
-
-        supabase.table("menfess_map").upsert({
-            "post_id": post_id,
-            "discussion_message_id": discussion_message_id
-        }, on_conflict=["post_id"]).execute()
-
-        return  # stop di sini biar ga lanjut ke reply handler
+            logging.info(f"✅ Mapping disimpan: post_id={post_id}, discussion_message_id={discussion_message_id}")
+        else:
+            logging.warning(f"⚠️ Forward dari channel lain: {origin_chat.username or origin_chat.id}")
+            
+            return  # stop di sini biar ga lanjut ke reply handler
 
     # ✅ Kasus 2: user reply di grup diskusi
     if msg.reply_to_message:
@@ -442,7 +429,7 @@ async def handle_discussion(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             logging.info("✅ Balasan berhasil dikirim ke user.")
         except Exception as e:
-            logging.error(f"❌ Gagal kirim balasan ke user: {e}")
+            logger.error(f"❌ Gagal kirim balasan ke user: {e}")
 
 
 
