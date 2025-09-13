@@ -1,19 +1,17 @@
-from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup
 import json
 import logging
 import re
 import markdown
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackContext
+from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from supabase import create_client
-from telegram.ext import ContextTypes
-
 
 # Token dan Channel
-BOT_TOKEN = '7932656511:AAGqJWjaUtUqms3f4pN2z-qJhbAH0Vsq6QQ'
+BOT_TOKEN = '8288933289:AAHCp1BzSdiJyy8owiaRiYOXYKw7tH87V3k'
 CHANNEL_ID = '@siublag'  # Ganti dengan username channel kamu
 GROUP_ID_DISKUSI = -1002890360563  # <- Ganti dengan ID grup diskusi kamu
 ADMIN_GROUP_ID = -1003093290169  # Ganti dengan ID grup admin kamu
-LOG_GROUP_ID = -1003093290169  # Ganti dengan ID grup log kamu
+LOG_GROUP_ID = -4766261341  # Ganti dengan ID grup log kamu
 SUPABASE_URL = 'https://kddjwsnndbliljnxixuv.supabase.co'
 SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkZGp3c25uZGJsaWxqbnhpeHV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1OTI2MzIsImV4cCI6MjA3MzE2ODYzMn0.Byv8o2VbTnoq4nQjAHs_ptkK8BXy1W3kkeNFkwCXYYA'
 
@@ -26,6 +24,18 @@ bot_active = True
 
 # Inisialisasi Supabase
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# callback yang dijalankan setelah Application.initialize()
+async def on_startup(application: Application):
+    try:
+        me = await application.bot.get_me()
+        logger.info(f"✅ Bot siap: @{me.username} (id={me.id})")
+    except Exception as e:
+        logger.error(f"⚠️ Gagal get_me saat startup: {e}")
+
+# callback saat shutdown (opsional)
+async def on_shutdown(application: Application):
+    logger.info("⏹️ Bot shutting down...")
 
 
 def load_required_channels():
@@ -314,7 +324,7 @@ async def handle_admin_reply(update: Update, context: CallbackContext):
         return  # ⛔ stop di sini, jangan lanjut ke flow balasan biasa!
 
     # ✅ Kalau bukan command → lanjut balasan biasa
-    caption = f"📬 Balasan dari admin:\n\n{reply_text}" if reply_text else "📬 Balasan dari admin."
+    caption = f"{reply_text}" if reply_text else "📬 Balasan dari admin."
 
     try:
         if update.message.text:
@@ -569,29 +579,6 @@ async def add_command(update: Update, context: CallbackContext) -> None:
     else:
         await update.message.reply_text("Gagal menyimpan command.")
 
-async def get_command(update: Update, context: CallbackContext) -> None:
-    message_text = update.message.text.strip()
-    logging.info(f"Pesan masuk: {message_text}")
-
-    if not message_text.startswith("/"):
-        logging.info("Pesan bukan command, diabaikan.")
-        return  
-
-    command_name = message_text.strip().split()[0]  # Ambil nama command lengkap (termasuk "/")
-    logging.info(f"Mencari command: {command_name}")
-
-
-    response = supabase.table("commands").select("content").eq("name", command_name).execute()
-    logging.info(f"Respon dari database: {response}")
-
-    if response.data:
-        content = response.data[0]["content"]
-        logging.info(f"Menampilkan isi command: {content}")
-        await update.message.reply_text(content, parse_mode='Markdown')
-    else:
-        logging.info("Command tidak ditemukan.")
-        return
-
 
 # Fungsi untuk menghapus command
 async def delete_command(update: Update, context: CallbackContext) -> None:
@@ -612,9 +599,43 @@ async def delete_command(update: Update, context: CallbackContext) -> None:
     else:
         await update.message.reply_text(f"Command `{command_name}` tidak ditemukan atau gagal dihapus.", parse_mode='Markdown')
 
-def main():
-    application = Application.builder().token(BOT_TOKEN).build()
+async def settings(update: Update, context: CallbackContext):
+    if update.effective_chat.id != ADMIN_GROUP_ID:
+        return  # cuma admin group yang bisa akses
 
+    # --- Ambil required channels ---
+    channels = load_required_channels()
+    channels_text = "\n".join([f"𔐼 {c}" for c in channels]) if channels else "– Belum ada –"
+
+    # --- Ambil hashtags aktif ---
+    response = supabase.table("triggered_hashtags").select("hashtag, active").execute()
+    hashtags = response.data if response.data else []
+    hashtags_text = "\n".join(
+        [f"𔐼 `{h['hashtag']}` ({'✅ aktif' if h['active'] else '❌ nonaktif'})" for h in hashtags]
+    ) if hashtags else "– Belum ada –"
+
+    # --- Ambil commands ---
+    response = supabase.table("commands").select("name, content").execute()
+    commands = response.data if response.data else []
+    commands_text = "\n\n".join(
+        [f"*{c['name']}*\n{c['content']}" for c in commands]
+    ) if commands else "– Belum ada –"
+
+    # --- Gabungin jadi satu teks ---
+    settings_text = (
+        "⚙️ *Pengaturan Bot*\n\n"
+        f"📌 *Required Channels:*\n{channels_text}\n\n"
+        f"🏷️ *Hashtags:*\n{hashtags_text}\n\n"
+        f"💻 *Commands:*\n{commands_text}"
+    )
+
+    await update.message.reply_text(settings_text, parse_mode="Markdown")
+
+def main():
+    # build application dan pasang post_init agar dijalankan setelah initialize
+    application = Application.builder().token(BOT_TOKEN).post_init(on_startup).build()
+
+    # --- Command built-in ---
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('menu', menu))
     application.add_handler(CommandHandler('open', open_bot))
@@ -629,15 +650,21 @@ def main():
     application.add_handler(CommandHandler('broadcast', broadcast))
     application.add_handler(CommandHandler("addcommand", add_command))
     application.add_handler(CommandHandler("deletecommand", delete_command))
-    application.add_handler(MessageHandler(filters.ALL & filters.ChatType.PRIVATE, handle_pesan))
+    application.add_handler(CommandHandler("settings", settings))
+
+    # --- Handlers khusus (lebih spesifik dulu) ---
     application.add_handler(MessageHandler(filters.ALL & filters.Chat(ADMIN_GROUP_ID), handle_admin_reply))
     application.add_handler(MessageHandler(filters.ChatType.CHANNEL, handle_channel_post))
-    application.add_handler(MessageHandler(filters.ChatType.GROUPS, handle_discussion))
-    application.add_handler(MessageHandler(filters.COMMAND, get_command))
+    # gunakan Chat(GROUP_ID_DISKUSI) agar pasti target grup diskusi yang benar
+    application.add_handler(MessageHandler(filters.Chat(GROUP_ID_DISKUSI), handle_discussion))
 
+    # --- Handler umum terakhir ---
+    application.add_handler(MessageHandler(filters.ALL & filters.ChatType.PRIVATE, handle_pesan))
 
+    logger.info("✅ Membangun bot selesai. Menjalankan polling...")
 
-    application.run_polling()
+    # run polling normal — post_init(on_startup) memastikan initialize sudah dilakukan
+    application.run_polling(allowed_updates=Update.ALL_TYPES, stop_signals=None)
 
 if __name__ == '__main__':
     main()
