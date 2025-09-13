@@ -1,7 +1,9 @@
 Flask==2.2.3
-python-telegram-bot==20.0
-supabase==1.0.3
+python-telegram-bot==22.3
+supabase==2.5.0
+httpx==0.28.0
 requests==2.31.0
 asyncio==3.4.3
 python-dotenv==1.0.1
+websockets==15.0.1
 markdown
