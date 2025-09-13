@@ -375,19 +375,35 @@ async def handle_discussion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not msg:
         return
 
+    post_id = None
+
     # ✅ Kasus 1: auto-forward dari channel ke grup diskusi
     if msg.is_automatic_forward and msg.forward_origin and msg.forward_origin.type == "channel":
-        if str(msg.forward_origin.chat.id) == str(CHANNEL_ID) or str(msg.forward_origin.chat.username) == CHANNEL_ID.lstrip("@"):
+        origin_id = str(msg.forward_origin.chat.id)
+        origin_username = msg.forward_origin.chat.username.lower() if msg.forward_origin.chat.username else None
+
+        if str(CHANNEL_ID) == origin_id or (origin_username and origin_username == CHANNEL_ID.lstrip("@").lower()):
             post_id = msg.forward_origin.message_id
-            discussion_message_id = msg.message_id
 
-            logging.info(f"🔗 Mapping baru: {post_id} ↔ {discussion_message_id}")
+    # ✅ Kasus 1b (fallback): kalau bukan auto-forward tapi ada forward info
+    elif msg.forward_from_chat:
+        origin_id = str(msg.forward_from_chat.id)
+        origin_username = msg.forward_from_chat.username.lower() if msg.forward_from_chat.username else None
 
-            supabase.table("menfess_map").update({
-                "discussion_message_id": discussion_message_id
-            }).eq("post_id", post_id).execute()
+        if str(CHANNEL_ID) == origin_id or (origin_username and origin_username == CHANNEL_ID.lstrip("@").lower()):
+            post_id = msg.forward_from_message_id
 
-            return  # stop di sini biar ga lanjut ke reply handler
+    # ✅ Simpan mapping kalau dapat post_id
+    if post_id:
+        discussion_message_id = msg.message_id
+        logging.info(f"🔗 Mapping baru: {post_id} ↔ {discussion_message_id}")
+
+        supabase.table("menfess_map").upsert({
+            "post_id": post_id,
+            "discussion_message_id": discussion_message_id
+        }, on_conflict=["post_id"]).execute()
+
+        return  # stop di sini biar ga lanjut ke reply handler
 
     # ✅ Kasus 2: user reply di grup diskusi
     if msg.reply_to_message:
@@ -426,7 +442,7 @@ async def handle_discussion(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             logging.info("✅ Balasan berhasil dikirim ke user.")
         except Exception as e:
-            logger.error(f"❌ Gagal kirim balasan ke user: {e}")
+            logging.error(f"❌ Gagal kirim balasan ke user: {e}")
 
 
 
