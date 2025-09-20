@@ -11,7 +11,7 @@ BOT_TOKEN = '8288933289:AAHCp1BzSdiJyy8owiaRiYOXYKw7tH87V3k'
 CHANNEL_ID = '@basepf'  # Ganti dengan username channel kamu
 GROUP_ID_DISKUSI = -1002457998417  # <- Ganti dengan ID grup diskusi kamu
 ADMIN_GROUP_ID = -1003093290169  # Ganti dengan ID grup admin kamu
-LOG_GROUP_ID = -4766261341  # Ganti dengan ID grup log kamu
+LOG_GROUP_ID = -1002973369337  # Ganti dengan ID grup log kamu
 SUPABASE_URL = 'https://kddjwsnndbliljnxixuv.supabase.co'
 SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkZGp3c25uZGJsaWxqbnhpeHV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1OTI2MzIsImV4cCI6MjA3MzE2ODYzMn0.Byv8o2VbTnoq4nQjAHs_ptkK8BXy1W3kkeNFkwCXYYA'
 
@@ -481,6 +481,7 @@ async def menu(update: Update, context: CallbackContext):
         "🐿 `#hiring` – Untuk informasi hiring admin\n"
         "🐿 `#mutual` – Untuk ajakan mutualan BA \n"
         "🐿 `#ptpt` – Untuk mencari partner ptpt\n"
+        "🐿 `#cl` – Untuk info event costless\n"
         "🐿 `#oot` – Bebas (hanya saat sesi oot)\n\n"
         "⚠️ *Peringatan:*\n"
         "Gunakan hashtag dengan benar dan bijak. Hindari spam atau keluar dari ranah profneeds/editing."
