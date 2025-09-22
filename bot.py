@@ -2,18 +2,19 @@ import json
 import logging
 import re
 import markdown
+import os
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackContext
 from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from supabase import create_client
 
 # Token dan Channel
-BOT_TOKEN = '8288933289:AAHCp1BzSdiJyy8owiaRiYOXYKw7tH87V3k'
-CHANNEL_ID = '@basepf'  # Ganti dengan username channel kamu
-GROUP_ID_DISKUSI = -1002457998417  # <- Ganti dengan ID grup diskusi kamu
-ADMIN_GROUP_ID = -1003093290169  # Ganti dengan ID grup admin kamu
-LOG_GROUP_ID = -1002973369337  # Ganti dengan ID grup log kamu
-SUPABASE_URL = 'https://kddjwsnndbliljnxixuv.supabase.co'
-SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkZGp3c25uZGJsaWxqbnhpeHV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1OTI2MzIsImV4cCI6MjA3MzE2ODYzMn0.Byv8o2VbTnoq4nQjAHs_ptkK8BXy1W3kkeNFkwCXYYA'
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+CHANNEL_ID = os.environ.get("CHANNEL_ID", "@basepf")
+GROUP_ID_DISKUSI = int(os.environ.get("GROUP_ID_DISKUSI", "-1002457998417"))
+ADMIN_GROUP_ID = int(os.environ.get("ADMIN_GROUP_ID", "-1003093290169"))
+LOG_GROUP_ID = int(os.environ.get("LOG_GROUP_ID", "-1002973369337"))
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 # Inisialisasi logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
